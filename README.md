@@ -5,6 +5,8 @@
 
 A zebra label printer driver plugin compatible with the [InvenTree](https://inventree.org/) Machine Registry.
 
+![Printer Settings](https://github.com/user-attachments/assets/82d3beaa-f837-45b4-99e5-17e3140a8116)
+
 ## Installation
 
 > [!IMPORTANT]
