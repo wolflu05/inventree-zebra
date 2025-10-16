@@ -201,14 +201,25 @@ class ZebraLabelPrintingDriver(LabelPrinterBaseDriver):
         printer_init = cast(str, machine.get_setting("PRINTER_INIT", "D"))
         width, height = round(label.width), round(label.height)
 
+        try:
+            zpl_template = label.metadata['zpl_template']
+        except Exception:
+            zpl_template = False
+
+
         for item in items:
-            png = self.render_to_png(label, item, dpi=dpi)
-            if png is None:
-                continue
-            data = png.convert("L").point(
-                lambda x: 255 if x > threshold else 0,  # type: ignore
-                mode="1",
-            )
+
+
+            if zpl_template:
+                data = label.render_as_string(item, None).replace('\n', '')
+            else:
+                png = self.render_to_png(label, item, dpi=dpi)
+                if png is None:
+                    continue
+                data = png.convert("L").point(
+                    lambda x: 255 if x > threshold else 0,  # type: ignore
+                    mode="1",
+                )
 
             lb = zpl.Label(height=height, width=width, dpmm=dpmm)
             lb.set_darkness(darkness)
@@ -216,7 +227,10 @@ class ZebraLabelPrintingDriver(LabelPrinterBaseDriver):
             lb.zpl_raw(printer_init)
             lb.origin(0, 0)
             lb.zpl_raw("^PQ" + str(printing_options.get("copies", 1)))
-            lb.write_graphic(data, width)
+            if zpl_template:
+                lb.zpl_raw(data)
+            else:
+                lb.write_graphic(data, width)
             lb.endorigin()
 
             printer.send_job(lb.dumpZPL())
