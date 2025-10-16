@@ -211,7 +211,7 @@ class ZebraLabelPrintingDriver(LabelPrinterBaseDriver):
 
 
             if zpl_template:
-                data = kwargs['context']['template'].render_as_string(kwargs['item_instance'], None).replace('\n', '')
+                data = label.render_as_string(item, None).replace('\n', '')
             else:
                 png = self.render_to_png(label, item, dpi=dpi)
                 if png is None:
