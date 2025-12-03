@@ -6,6 +6,7 @@ from django.db.models.query import QuerySet
 from django.http import JsonResponse
 from django.utils.translation import gettext_lazy as _
 from django.core.validators import MinValueValidator, MaxValueValidator
+import serial
 import zpl
 
 from plugin import InvenTreePlugin
@@ -38,7 +39,7 @@ class InvenTreeZebra(MachineDriverMixin, InvenTreePlugin):
 
     def get_machine_drivers(self):
         """Register machine drivers."""
-        return [ZebraLabelPrintingTCPDriver]
+        return [ZebraLabelPrintingTCPDriver, ZebraLabelPrintingSerialDriver]
 
 
 class ZebraLabelPrintingBaseDriver(LabelPrinterBaseDriver):
@@ -242,3 +243,97 @@ class TCPPrinterEnhanced(zpl.TCPPrinter):
         x = self.socket.recv(1024).decode("utf-8")
         x = x.strip().removeprefix('"').removesuffix('"')
         return x
+
+class ZebraLabelPrintingSerialDriver(ZebraLabelPrintingBaseDriver):
+    """Zebra label printing driver over Serial for InvenTree."""
+
+    SLUG = "zebra-serial-driver"
+    NAME = "Zebra Serial Driver"
+    DESCRIPTION = "Zebra label printing over Serial driver for InvenTree"
+
+    def __init__(self, *args, **kwargs):
+        self.MACHINE_SETTINGS = {
+            "PORT": {
+                "name": _("Port"),
+                "description": _("Serial port"),
+                "default": "/dev/ttyUSB0",
+                "required": True,
+            },
+            "BAUD": {
+                "name": _("Baud Rate"),
+                "description": _("Serial port baud rate"),
+                "choices": [
+                    ("110", "110 Baud"),
+                    ("300", "300 Baud"),
+                    ("600", "600 Baud"),
+                    ("2400", "2400 Baud"),
+                    ("4800", "4800 Baud"),
+                    ("9600", "9600 Baud"),
+                    ("14400", "14400 Baud"),
+                    ("19200", "19200 Baud"),
+                    ("28800", "28800 Baud"),
+                    ("38400", "38400 Baud"),
+                    ("57600", "57600 Baud"),
+                    ("115200", "115200 Baud")
+                ],
+                "default": "9600",
+                "required": True,
+            },
+        }
+
+        super().__init__(*args, **kwargs)
+
+    def get_zpl_printer(self, machine: LabelPrinterMachine) -> "SerialPrinter":
+        """Return a zpl.Printer instance for the specified machine."""
+        port = cast(str, machine.get_setting("PORT", "D"))
+        baud = cast(int, machine.get_setting("BAUD", "D"))
+        return SerialPrinter(port, baud)
+
+class SerialPrinter(zpl.Printer):
+    """ZPL Printer driver for serial connected device"""
+
+    def __init__(self, port, baud):
+        try:
+            self.serial = serial.Serial(port, baud, timeout=2)
+        except:
+            raise
+        finally:
+            super().__init__()
+
+    def send_job(self, zpl2):
+        if isinstance(zpl2, zpl.label.Label):
+            self.serial.write(b'\x02')
+            self.serial.write(zpl2.dumpZPL())
+            self.serial.write(b'\x03')
+        else:
+            self.serial.write(b'\x02')
+            self.serial.write(zpl2.encode())
+            self.serial.write(b'\x03')
+
+    def request_info(self, command):
+        self.serial.reset_input_buffer()
+        self.serial.write(b'\x02')
+        self.serial.write(command.encode())
+        self.serial.write(b'\x03')
+
+        lineCount = 1
+        if ('~HS' == command): lineCount = 3
+
+        buf = b''
+        for n in range(lineCount):
+            buf += self.serial.read_until(b'\x03')
+
+        return buf
+
+    def request_sdg(self, key):
+        """Request specific SDG key."""
+        self.serial.reset_input_buffer()
+        self.serial.write(f'! U1 getvar "{key}"\r\n'.encode())
+        buf = self.serial.readline().decode()
+        buf = buf.strip().removeprefix('"').removesuffix('"')
+
+        return buf
+
+    def __del__(self):
+        if 'self.serial' in locals():
+            self.serial.close()
