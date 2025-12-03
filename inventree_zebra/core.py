@@ -89,78 +89,87 @@ class ZebraLabelPrintingBaseDriver(LabelPrinterBaseDriver):
 
         super().__init__(*args, **kwargs)
 
+    def restart_machine(self, machine):
+        """Inventree Driver API: Restart machine"""
+        self.update_status(machine)
+
     def ping_machines(self):
         """Ping all configured Zebra printers to check if they are online."""
         for machine in cast(list[LabelPrinterMachine], self.get_machines()):
-            try:
-                printer = self.get_zpl_printer(machine)
-                _, warnings, _, errors = printer.get_printer_errors()
-                info = printer.get_printer_info()
-                status = printer.get_printer_status()
+            self.update_status(machine)
 
-                properties: list[MachineProperty] = [
-                    {"key": "Model", "value": info.get("model", "Unknown")},
-                    {"key": "Firmware", "value": info.get("version", "Unknown")},
-                    {"key": "Serial", "value": printer.get_sn()},
-                    {"key": "MAC", "value": printer.get_mac()},
-                    {"key": "DPMM", "value": info.get("dpmm", "Unknown")},
-                    {"key": "Memory", "value": info.get("mem", "Unknown")},
-                    {
-                        "group": "Printer Status",
-                        "key": "Head down",
-                        "type": "bool",
-                        "value": status.get("head_up", "0") != "1",
-                    },
-                    {
-                        "group": "Printer Status",
-                        "key": "Cover closed",
-                        "type": "bool",
-                        "value": printer.request_sdg("sensor.cover_open") != "yes",
-                    },
-                    {
-                        "group": "Printer Status",
-                        "key": "Paper",
-                        "type": "bool",
-                        "value": status.get("paper_out", "0") != "1",
-                    },
-                    {
-                        "group": "Printer Status",
-                        "key": "Ribbon",
-                        "type": "bool",
-                        "value": status.get("ribbon_out", "0") != "1",
-                    },
-                    {
-                        "group": "Printer Status",
-                        "key": "Not Paused",
-                        "type": "bool",
-                        "value": status.get("pause", "0") != "1",
-                    },
-                    {
-                        "group": "Printer Status",
-                        "key": "Print length",
-                        "type": "str",
-                        "value": printer.request_sdg(
-                            "odometer.total_print_length"
-                        ).split(",")[1],
-                    },
-                ]
+    def update_status(self, machine: BaseMachineType):
+        """Update Zebra printer status"""
+        try:
+            printer = self.get_zpl_printer(machine)
+            _, warnings, _, errors = printer.get_printer_errors()
+            info = printer.get_printer_info()
+            status = printer.get_printer_status()
 
-                machine.set_properties(properties)
+            properties: list[MachineProperty] = [
+                {"key": "Model", "value": info.get("model", "Unknown")},
+                {"key": "Firmware", "value": info.get("version", "Unknown")},
+                {"key": "Serial", "value": printer.get_sn()},
+                {"key": "MAC", "value": printer.get_mac()},
+                {"key": "DPMM", "value": info.get("dpmm", "Unknown")},
+                {"key": "Memory", "value": info.get("mem", "Unknown")},
+                {
+                    "group": "Printer Status",
+                    "key": "Head down",
+                    "type": "bool",
+                    "value": status.get("head_up", "0") != "1",
+                },
+                {
+                    "group": "Printer Status",
+                    "key": "Cover closed",
+                    "type": "bool",
+                    "value": printer.request_sdg("sensor.cover_open") != "yes",
+                },
+                {
+                    "group": "Printer Status",
+                    "key": "Paper",
+                    "type": "bool",
+                    "value": status.get("paper_out", "0") != "1",
+                },
+                {
+                    "group": "Printer Status",
+                    "key": "Ribbon",
+                    "type": "bool",
+                    "value": status.get("ribbon_out", "0") != "1",
+                },
+                {
+                    "group": "Printer Status",
+                    "key": "Not Paused",
+                    "type": "bool",
+                    "value": status.get("pause", "0") != "1",
+                },
+                {
+                    "group": "Printer Status",
+                    "key": "Print length",
+                    "type": "str",
+                    "value": printer.request_sdg(
+                        "odometer.total_print_length"
+                    ).split(",")[1],
+                },
+            ]
 
-                if len(warnings) > 0 or len(errors) > 0:
-                    machine.set_status(LabelPrinterMachine.MACHINE_STATUS.ERROR)
-                else:
-                    machine.set_status(LabelPrinterMachine.MACHINE_STATUS.CONNECTED)
+            machine.set_properties(properties)
 
-                machine.reset_errors()
-                if len(errors) > 0:
-                    machine.handle_error(", ".join(errors))
+            if len(warnings) > 0 or len(errors) > 0:
+                machine.set_status(LabelPrinterMachine.MACHINE_STATUS.ERROR)
+            else:
+                machine.set_status(LabelPrinterMachine.MACHINE_STATUS.CONNECTED)
 
-                machine.set_status_text(", ".join(warnings))
-            except Exception as e:
-                machine.set_status(LabelPrinterMachine.MACHINE_STATUS.DISCONNECTED)
-                machine.reset_errors()
-                machine.handle_error(str(e))
+            machine.reset_errors()
+            if len(errors) > 0:
+                machine.handle_error(", ".join(errors))
+
+            machine.set_status_text(", ".join(warnings))
+
+        except Exception as e:
+            machine.set_status(LabelPrinterMachine.MACHINE_STATUS.DISCONNECTED)
+            machine.reset_errors()
+            machine.handle_error(str(e))
 
     def print_labels(
         self,
