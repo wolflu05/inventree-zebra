@@ -38,75 +38,55 @@ class InvenTreeZebra(MachineDriverMixin, InvenTreePlugin):
 
     def get_machine_drivers(self):
         """Register machine drivers."""
-        return [ZebraLabelPrintingDriver]
+        return [ZebraLabelPrintingTCPDriver]
 
 
-class ZebraLabelPrintingDriver(LabelPrinterBaseDriver):
-    """Zebra label printing driver for InvenTree."""
-
-    SLUG = "zebra-driver"
-    NAME = "Zebra Driver"
-    DESCRIPTION = "Zebra label printing driver for InvenTree"
+class ZebraLabelPrintingBaseDriver(LabelPrinterBaseDriver):
+    """Zebra label printing driver base class"""
 
     def __init__(self, *args, **kwargs):
-        self.MACHINE_SETTINGS = {
-            "HOST": {
-                "name": _("Host"),
-                "description": _("IP/Hostname"),
-                "default": "",
-                "required": True,
-            },
-            "PORT": {
-                "name": _("Port"),
-                "description": _("Port number"),
-                "validator": [int, MinValueValidator(1), MaxValueValidator(65535)],
-                "default": 9100,
-                "required": True,
-            },
-            "THRESHOLD": {
-                "name": _("Threshold"),
-                "description": _(
-                    "Set the threshold for converting grayscale to BW (0-255)"
-                ),
-                "validator": [int, MinValueValidator(0), MaxValueValidator(255)],
-                "default": 200,
-                "required": True,
-            },
-            "DARKNESS": {
-                "name": _("Darkness"),
-                "description": _("Set the darkness level (0-30)"),
-                "validator": [int, MinValueValidator(0), MaxValueValidator(30)],
-                "default": 20,
-                "required": True,
-            },
-            "DPMM": {
-                "name": _("Dots per mm"),
-                "description": _("Set the printing resolution (dots per mm)"),
-                "choices": [
-                    ("8", "8 dots per mm (203dpi)"),
-                    ("12", "12 dots per mm (300dpi)"),
-                    ("24", "24 dots per mm (600dpi)"),
-                ],
-                "default": "8",
-                "required": True,
-            },
-            "PRINTER_INIT": {
-                "name": _("Printer Initialization"),
-                "description": _(
-                    "Additional ZPL commands to initialize the printer before each print job"
-                ),
-                "default": "~TA000~JSN^LT0^MNW^MTT^PMN^PON^PR2,2^LRN",
-                "required": True,
-            },
+
+        # Append settings already set by the derived driver
+        self.MACHINE_SETTINGS["THRESHOLD"] = {
+            "name": _("Threshold"),
+            "description": _(
+                "Set the threshold for converting grayscale to BW (0-255)"
+            ),
+            "validator": [int, MinValueValidator(0), MaxValueValidator(255)],
+            "default": 200,
+            "required": True,
+        }
+
+        self.MACHINE_SETTINGS["DARKNESS"] = {
+            "name": _("Darkness"),
+            "description": _("Set the darkness level (0-30)"),
+            "validator": [int, MinValueValidator(0), MaxValueValidator(30)],
+            "default": 20,
+            "required": True,
+        }
+
+        self.MACHINE_SETTINGS["DPMM"] = {
+            "name": _("Dots per mm"),
+            "description": _("Set the printing resolution (dots per mm)"),
+            "choices": [
+                ("8", "8 dots per mm (203dpi)"),
+                ("12", "12 dots per mm (300dpi)"),
+                ("24", "24 dots per mm (600dpi)"),
+            ],
+            "default": "8",
+            "required": True,
+        }
+
+        self.MACHINE_SETTINGS["PRINTER_INIT"] = {
+            "name": _("Printer Initialization"),
+            "description": _(
+                "Additional ZPL commands to initialize the printer before each print job"
+            ),
+            "default": "~TA000~JSN^LT0^MNW^MTT^PMN^PON^PR2,2^LRN",
+            "required": True,
         }
 
         super().__init__(*args, **kwargs)
-
-    def get_zpl_printer(self, machine: LabelPrinterMachine) -> "TCPPrinterEnhanced":
-        """Return a zpl.Printer instance for the specified machine."""
-        host = cast(str, machine.get_setting("HOST", "D"))
-        port = cast(int, machine.get_setting("PORT", "D"))
-        return TCPPrinterEnhanced(host, port)
 
     def ping_machines(self):
         """Ping all configured Zebra printers to check if they are online."""
@@ -221,6 +201,37 @@ class ZebraLabelPrintingDriver(LabelPrinterBaseDriver):
 
             printer.send_job(lb.dumpZPL())
 
+class ZebraLabelPrintingTCPDriver(ZebraLabelPrintingBaseDriver):
+    """Zebra label printing over TCP driver for InvenTree."""
+
+    SLUG = "zebra-driver"
+    NAME = "Zebra TCP Driver"
+    DESCRIPTION = "Zebra label printing over TCP driver for InvenTree"
+
+    def __init__(self, *args, **kwargs):
+        self.MACHINE_SETTINGS = {
+            "HOST": {
+                "name": _("Host"),
+                "description": _("IP/Hostname"),
+                "default": "",
+                "required": True,
+            },
+            "PORT": {
+                "name": _("Port"),
+                "description": _("Port number"),
+                "validator": [int, MinValueValidator(1), MaxValueValidator(65535)],
+                "default": 9100,
+                "required": True,
+            },
+        }
+
+        super().__init__(*args, **kwargs)
+
+    def get_zpl_printer(self, machine: LabelPrinterMachine) -> "TCPPrinterEnhanced":
+        """Return a zpl.Printer instance for the specified machine."""
+        host = cast(str, machine.get_setting("HOST", "D"))
+        port = cast(int, machine.get_setting("PORT", "D"))
+        return TCPPrinterEnhanced(host, port)
 
 class TCPPrinterEnhanced(zpl.TCPPrinter):
     """Enhanced TCPPrinter."""
